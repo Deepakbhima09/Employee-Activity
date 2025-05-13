@@ -5,13 +5,12 @@ from datetime import datetime
 import os
 
 app = Flask(__name__, template_folder='templates')
-app.config['SECRET_KEY'] = 'your-secret-key-here'  # Change this!
+app.config['SECRET_KEY'] = 'your-secret-key-123'  # Change this in production
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///db.sqlite').replace('postgres://', 'postgresql://')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
+login_manager = LoginManager(app)
 
 # Database Models
 class User(UserMixin, db.Model):
@@ -45,6 +44,7 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
+        
         if user and user.password == password:
             login_user(user)
             return redirect(url_for('dashboard'))
@@ -57,12 +57,29 @@ def dashboard():
     if current_user.is_manager:
         performances = EmployeePerformance.query.all()
         employees = User.query.filter_by(is_manager=False).all()
-        return render_template('manager_dashboard.html', performances=performances, employees=employees)
+        return render_template('manager_dashboard.html', 
+                            performances=performances, 
+                            employees=employees)
     else:
         performances = EmployeePerformance.query.filter_by(employee_id=current_user.id).all()
-        return render_template('employee_dashboard.html', performances=performances)
+        return render_template('employee_dashboard.html', 
+                            performances=performances)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # Auto-create admin user if none exists
+        if not User.query.first():
+            admin = User(username="admin", password="admin123", is_manager=True)
+            employee = User(username="employee", password="employee123", is_manager=False)
+            db.session.add(admin)
+            db.session.add(employee)
+            db.session.commit()
+            print("Created default users: admin/admin123, employee/employee123")
     app.run(debug=True)
